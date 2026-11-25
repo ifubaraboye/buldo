@@ -4,8 +4,11 @@ Buldo builds schematic files one block at a time, paid for with the exact items
 in containers **you** link to a build site. No substitutions, no magic. It is a
 Fabric mod for Minecraft **26.2** (Java 25), MIT licensed.
 
-It runs on the server, so vanilla clients can join; an optional client-side
-camera gives you an RTS-style overview of the build.
+By default a small crew of villagers walks to the site and places the blocks by
+hand, with a swing, a sound and a puff of dust. Everything that matters (items,
+undo, exact replace, queues) still runs on the server, so vanilla clients can
+join; an optional client-side camera gives you an RTS-style overview of the
+build.
 
 The mod is server-side first: the preview is drawn with particles, so Iris/Sodium
 style render mods are not involved. The overview camera is the only client
@@ -30,7 +33,7 @@ reported and skipped, never guessed.
 /buldo create myhouse house-70        site 3 blocks in front of you
 /buldo link myhouse                   link the container you are looking at
 /buldo materials myhouse              what is still missing
-/buldo start myhouse                  start placing, one block at a time
+/buldo start myhouse                  a couple of villagers walk over and build
 ```
 
 While it runs: `/buldo pause myhouse`, `/buldo resume myhouse`,
@@ -60,6 +63,40 @@ While it runs: `/buldo pause myhouse`, `/buldo resume myhouse`,
 | `/buldo tp <name>` | teleport to a site |
 | `/buldo queue add\|remove\|list\|clear [name]` | build sites one after another |
 | `/buldo speed <1-40>` | blocks per second (default 10) |
+| `/buldo mode <name> workers\|instant` | villager crew (default) or the old instant build |
+| `/buldo workers <name> <1-8>` | size of the villager crew for a site |
+
+### Realistic building: the villager crew
+
+Sites build with a **crew of villagers** by default (2, up to 8). They are
+ordinary villagers with their trades and wandering removed: they have no names,
+cannot be hurt, do not despawn and never talk. When a site starts they appear
+next to it, walk to the next block that still needs placing, look at it, swing
+and set it down. They reach about 5 blocks, and if a path just cannot be found
+(roofs, odd shapes) they will place from a little farther away, and only as a
+last resort hop next to the block.
+
+Each worker owns a patch of the footprint and raises it from the ground up, so a
+large crew spreads over the whole build instead of laying one wall together.
+When a block is well above them and there is nothing to stand on, they put up a
+column of **scaffolding**, climb it, place the block, and take it down again
+when they move on — the items come from the same linked containers and are
+returned when the scaffolding is removed. Leftover scaffolding is cleared when
+the site pauses, finishes, is undone, or after a server restart.
+
+Because they really walk, the crew is a bit slower than the instant builder on
+tall or spread-out houses. That is the point. Everything else is identical:
+
+- the same exact items are withdrawn from the same linked containers;
+- missing materials block the site exactly like before;
+- `/buldo pause`, `resume`, `undo` and the queue all work;
+- a crew is dismissed (with a puff of smoke) when the site finishes, is undone
+  or is cancelled, and is re-adopted after a restart if it was mid-build.
+
+`/buldo mode <name> instant` switches one site back to the old block-by-block
+instant build, and `/buldo mode <name> workers` switches it back. Crew size can
+be changed while it builds. `workerBuilding: false` in the config makes new
+sites default to instant.
 
 ### How it behaves
 
@@ -97,8 +134,8 @@ check and still stops as soon as an item is actually missing.
 
 ## Overview camera (client side)
 
-The mod includes an optional RTS-style camera so you can watch a build from
-above. It needs the jar on the client as well; on a dedicated server it is
+The mod includes an optional RTS-style camera so you can watch the crew work
+from above. It needs the jar on the client as well; on a dedicated server it is
 simply the server side running and the camera is client-only.
 
 Press **F6** to cycle:
@@ -136,6 +173,10 @@ The keybind can be changed in Options → Controls → Buldo (default F6).
   "autoStartQueue": true,
   "settleOnFinish": false,        // send neighbour updates once finished
   "saveEvery200Blocks": true,
+  "workerBuilding": true,         // new sites build with a villager crew
+  "workersPerSite": 2,            // default crew size, 1 - 8
+  "maxWorkersPerSite": 6,         // hard cap for /buldo workers
+  "workerReach": 5.5,             // how far a worker can place, 3 - 12
   "freeBlocks": ["minecraft:air", "minecraft:water", "..."]
 }
 ```

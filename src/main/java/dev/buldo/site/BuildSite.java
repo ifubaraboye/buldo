@@ -33,6 +33,8 @@ public final class BuildSite {
 	public Mirror mirror = Mirror.NONE;
 	public boolean exactReplace = true;
 	public boolean free = false;
+	public BuildMode mode = BuildMode.WORKERS;
+	public int workers = 2;
 	public SiteState state = SiteState.EMPTY;
 	public int cursor;
 	public int placed;
@@ -103,6 +105,8 @@ public final class BuildSite {
 		tag.putInt("mirror", mirror.ordinal());
 		tag.putBoolean("exactReplace", exactReplace);
 		tag.putBoolean("free", free);
+		tag.putString("mode", mode.id());
+		tag.putInt("workers", workers);
 		tag.putString("state", state.name());
 		tag.putInt("cursor", cursor);
 		tag.putInt("placed", placed);
@@ -171,6 +175,8 @@ public final class BuildSite {
 		site.mirror = mirrors[Math.max(0, Math.min(mirrors.length - 1, mir))];
 		site.exactReplace = tag.getBooleanOr("exactReplace", true);
 		site.free = tag.getBooleanOr("free", false);
+		site.mode = BuildMode.parse(tag.getStringOr("mode", "workers"));
+		site.workers = Math.max(1, Math.min(8, tag.getIntOr("workers", 2)));
 		try {
 			site.state = SiteState.valueOf(tag.getStringOr("state", "READY"));
 		} catch (IllegalArgumentException e) {

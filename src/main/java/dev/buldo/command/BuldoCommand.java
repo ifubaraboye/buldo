@@ -10,6 +10,7 @@ import dev.buldo.plan.BuildPlan;
 import dev.buldo.schem.Blueprint;
 import dev.buldo.schem.SchematicLibrary;
 import dev.buldo.site.BuildSite;
+import dev.buldo.site.BuildMode;
 import dev.buldo.site.Containers;
 import dev.buldo.site.SiteManager;
 import dev.buldo.site.SiteState;
@@ -148,6 +149,20 @@ public final class BuldoCommand {
 								.suggests(SITE_NAMES)
 								.then(Commands.literal("on").executes(ctx -> free(ctx, true)))
 								.then(Commands.literal("off").executes(ctx -> free(ctx, false)))))
+				.then(Commands.literal("mode")
+						.requires(BuldoCommand::op)
+						.then(Commands.argument("name", StringArgumentType.word())
+								.suggests(SITE_NAMES)
+								.then(Commands.literal("workers")
+										.executes(ctx -> mode(ctx, BuildMode.WORKERS)))
+								.then(Commands.literal("instant")
+										.executes(ctx -> mode(ctx, BuildMode.INSTANT)))))
+				.then(Commands.literal("workers")
+						.requires(BuldoCommand::op)
+						.then(Commands.argument("name", StringArgumentType.word())
+								.suggests(SITE_NAMES)
+								.then(Commands.argument("count", IntegerArgumentType.integer(1, 8))
+										.executes(BuldoCommand::workers))))
 				.then(Commands.literal("materials")
 						.then(Commands.argument("name", StringArgumentType.word())
 								.suggests(SITE_NAMES)
@@ -241,6 +256,8 @@ public final class BuldoCommand {
 				"/buldo materials <name> — what is still needed",
 				"/buldo start <name> [force] — start building",
 				"/buldo free <name> on|off — build without items (creative only)",
+				"/buldo mode <name> workers|instant — villager crew or instant blocks",
+				"/buldo workers <name> <1-8> — size of the villager crew",
 				"/buldo pause|resume|cancel|undo <name>",
 				"/buldo ghost <name> on|off — particle preview",
 				"/buldo queue add|remove|list|clear [name]",
@@ -261,7 +278,11 @@ public final class BuldoCommand {
 				+ " hud=" + cfg.hud
 				+ " maxSites=" + cfg.maxSites
 				+ " maxUndoFrames=" + cfg.maxUndoFrames
-				+ " autoStartQueue=" + cfg.autoStartQueue);
+				+ " autoStartQueue=" + cfg.autoStartQueue
+				+ " workerBuilding=" + cfg.workerBuilding
+				+ " workersPerSite=" + cfg.workersPerSite
+				+ " maxWorkersPerSite=" + cfg.maxWorkersPerSite
+				+ " workerReach=" + cfg.workerReach);
 		return 1;
 	}
 
@@ -390,6 +411,11 @@ public final class BuldoCommand {
 				Fmt.send(ctx.getSource(), Fmt.warn(plan.unknown.size() + " unknown block state kinds will be skipped (see /buldo inspect " + site.schematic + ")."));
 			}
 			Fmt.send(ctx.getSource(), "Next: /buldo link " + site.name + " (look at a container) then /buldo start " + site.name);
+			if (site.mode == BuildMode.WORKERS) {
+				Fmt.send(ctx.getSource(), "Build mode " + site.mode.label() + " · " + site.workers
+						+ " villagers will walk over and place the blocks. /buldo mode " + site.name
+						+ " instant for the old instant build.");
+			}
 			return 1;
 		} catch (Exception e) {
 			Fmt.send(ctx.getSource(), Fmt.err(e.getMessage() == null ? e.toString() : e.getMessage()));
@@ -410,6 +436,7 @@ public final class BuldoCommand {
 			Fmt.send(ctx.getSource(), String.format(Locale.ROOT, "%-16s %-20s %3d%%  %s @ %d,%d,%d%s%s%s",
 					site.name, site.state.label(), site.progressPercent(), site.schematic,
 					site.origin.getX(), site.origin.getY(), site.origin.getZ(),
+					site.mode == BuildMode.WORKERS ? "  crew " + site.workers : "",
 					site.free ? "  free" : "",
 					site.missing.isEmpty() ? "" : "  missing " + site.missing.values().stream().mapToInt(Integer::intValue).sum()));
 		}
@@ -442,6 +469,8 @@ public final class BuldoCommand {
 		}
 		Fmt.send(ctx.getSource(), "containers " + site.containers.size() + " · undo frames " + site.undo.size()
 				+ " · ghost " + (site.ghost ? "on" : "off")
+				+ " · " + site.mode.label()
+				+ (site.mode == BuildMode.WORKERS ? " (" + site.workers + ")" : "")
 				+ (site.free ? " · FREE MODE" : "")
 				+ (site.lastError.isEmpty() ? "" : " · " + site.lastError));
 		if (!site.missing.isEmpty()) {
@@ -588,6 +617,42 @@ public final class BuldoCommand {
 			return 0;
 		}
 		Fmt.send(ctx.getSource(), Fmt.ok("Restored the blocks that '" + site.name + "' had replaced."));
+		return 1;
+	}
+
+	private static int mode(CommandContext<CommandSourceStack> ctx, BuildMode mode) {
+		BuildSite site = site(ctx, "name");
+		SiteManager manager = manager(ctx);
+		if (site == null || manager == null) {
+			return 0;
+		}
+		manager.setMode(site, mode);
+		if (mode == BuildMode.WORKERS) {
+			Fmt.send(ctx.getSource(), Fmt.ok("'" + site.name + "' now builds with a villager crew ("
+					+ site.workers + "). They walk to the site and place blocks by hand."));
+			if (site.state == SiteState.READY || site.state == SiteState.PAUSED
+					|| site.state == SiteState.UNDONE) {
+				Fmt.send(ctx.getSource(), "Start it with /buldo start " + site.name + ".");
+			}
+		} else {
+			Fmt.send(ctx.getSource(), Fmt.ok("'" + site.name + "' now builds instantly, one block at a time."));
+		}
+		return 1;
+	}
+
+	private static int workers(CommandContext<CommandSourceStack> ctx) {
+		BuildSite site = site(ctx, "name");
+		SiteManager manager = manager(ctx);
+		if (site == null || manager == null) {
+			return 0;
+		}
+		int count = IntegerArgumentType.getInteger(ctx, "count");
+		manager.setWorkers(site, count);
+		if (site.state == SiteState.BUILDING && site.mode == BuildMode.WORKERS) {
+			Fmt.send(ctx.getSource(), Fmt.ok("'" + site.name + "' crew will be " + count + " next tick."));
+		} else {
+			Fmt.send(ctx.getSource(), Fmt.ok("'" + site.name + "' crew size set to " + count + "."));
+		}
 		return 1;
 	}
 

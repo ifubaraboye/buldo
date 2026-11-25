@@ -33,6 +33,12 @@ public final class BuldoConfig {
 	public boolean settleOnFinish = false;
 	public boolean saveEvery200Blocks = true;
 
+	// Villager crews (the realistic builder).
+	public boolean workerBuilding = true;
+	public int workersPerSite = 2;
+	public int maxWorkersPerSite = 6;
+	public double workerReach = 5.5;
+
 	// Blocks that never cost an item and are never taken from containers.
 	public List<String> freeBlocks = new ArrayList<>(List.of(
 			"minecraft:air",
@@ -93,6 +99,12 @@ public final class BuldoConfig {
 		if (maxSites < 1) maxSites = 1;
 		if (maxUndoFrames < 0) maxUndoFrames = 0;
 		if (maxUndoFrames > 10) maxUndoFrames = 10;
+		if (workersPerSite < 1) workersPerSite = 1;
+		if (workersPerSite > 8) workersPerSite = 8;
+		if (maxWorkersPerSite < 1) maxWorkersPerSite = 1;
+		if (maxWorkersPerSite > 8) maxWorkersPerSite = 8;
+		if (workerReach < 3) workerReach = 3;
+		if (workerReach > 12) workerReach = 12;
 		if (freeBlocks == null) freeBlocks = new ArrayList<>();
 	}
 

@@ -3,7 +3,7 @@
 	"id": "buldo",
 	"version": "${version}",
 	"name": "Buldo",
-	"description": "Places schematics block by block, paid for with exact items from containers you link.",
+	"description": "Places schematics block by block with a crew of villagers, paid for with exact items from containers you link.",
 	"authors": [
 		"oribi"
 	],

@@ -69,6 +69,9 @@ final class Builder {
 	}
 
 	static void finish(SiteManager manager, BuildSite site, ServerLevel level, BuildPlan plan) {
+		// The crew has nothing left to do; send them home before the site can
+		// start the next one in the queue.
+		WorkerBuilder.dismiss(manager, site);
 		site.state = SiteState.DONE;
 		site.carry = 0;
 		site.missing.clear();

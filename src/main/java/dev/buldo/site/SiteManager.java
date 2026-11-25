@@ -62,12 +62,14 @@ public final class SiteManager {
 	public static void onServerStarted(MinecraftServer server) {
 		current = new SiteManager(server);
 		current.load();
+		WorkerBuilder.discardOrphans(server, current.sites.keySet());
 		Buldo.LOGGER.info("Buldo loaded {} site(s) from {}", current.sites.size(), current.sitesDir());
 	}
 
 	public static void onServerStopping(MinecraftServer server) {
 		if (current != null) {
 			current.save();
+			WorkerBuilder.clearRuntime();
 			current = null;
 		}
 	}
@@ -243,6 +245,8 @@ public final class SiteManager {
 		site.mirror = mirror;
 		site.exactReplace = exactReplace;
 		site.ghost = config.ghostDefault;
+		site.mode = config.workerBuilding ? BuildMode.WORKERS : BuildMode.INSTANT;
+		site.workers = config.workersPerSite;
 		site.sourceHash = blueprint.hash;
 		site.plan = plan;
 		site.state = SiteState.READY;
@@ -261,6 +265,7 @@ public final class SiteManager {
 		if (site.state == SiteState.BUILDING) {
 			return false;
 		}
+		WorkerBuilder.dismiss(this, site);
 		sites.remove(site.name);
 		queue.remove(site.name);
 		try {
@@ -314,7 +319,9 @@ public final class SiteManager {
 			return new LinkedHashMap<>();
 		}
 		Map<Item, Integer> need = new LinkedHashMap<>();
-		for (int i = Math.max(0, site.cursor); i < plan.cells.size(); i++) {
+		// Workers place out of order, so every cell still has to be looked at.
+		int from = site.mode == BuildMode.WORKERS ? 0 : Math.max(0, site.cursor);
+		for (int i = from; i < plan.cells.size(); i++) {
 			BuildPlan.Cell cell = plan.cells.get(i);
 			if (cell.cost <= 0) {
 				continue;
@@ -387,12 +394,16 @@ public final class SiteManager {
 		site.startedTick = level.getGameTime();
 		site.lastError = "";
 		site.missing.clear();
+		if (site.mode == BuildMode.WORKERS) {
+			WorkerBuilder.onStart(site);
+		}
 		dirty = true;
 		save();
 		notifyNear(site, site.free
 				? Fmt.ok("Building " + site.name + " in free mode (" + plan.solidCells + " blocks, no items taken).")
 				: Fmt.ok("Building " + site.name + " (" + plan.solidCells + " blocks, "
-						+ Fmt.num(plan.cells.size()) + " cells)."));
+						+ Fmt.num(plan.cells.size()) + " cells, "
+						+ (site.mode == BuildMode.WORKERS ? site.workers + " villager crew" : "instant") + ")."));
 		return true;
 	}
 
@@ -402,6 +413,7 @@ public final class SiteManager {
 			return false;
 		}
 		site.state = SiteState.PAUSED;
+		WorkerBuilder.onPause(this, site);
 		dirty = true;
 		save();
 		return true;
@@ -422,9 +434,27 @@ public final class SiteManager {
 		}
 		site.state = SiteState.PAUSED;
 		site.carry = 0;
+		WorkerBuilder.onPause(this, site);
 		dirty = true;
 		save();
 		return true;
+	}
+
+	public void setMode(BuildSite site, BuildMode mode) {
+		site.mode = mode;
+		if (mode == BuildMode.INSTANT) {
+			WorkerBuilder.dismiss(this, site);
+		} else {
+			WorkerBuilder.onStart(site);
+		}
+		dirty = true;
+		save();
+	}
+
+	public void setWorkers(BuildSite site, int workers) {
+		site.workers = Math.max(1, Math.min(8, workers));
+		dirty = true;
+		save();
 	}
 
 	public boolean undo(BuildSite site) {
@@ -457,6 +487,7 @@ public final class SiteManager {
 		site.carry = 0;
 		site.plan = null;
 		site.state = SiteState.UNDONE;
+		WorkerBuilder.dismiss(this, site);
 		dirty = true;
 		save();
 		return true;
@@ -493,6 +524,7 @@ public final class SiteManager {
 
 	public void onSiteFinished(BuildSite site) {
 		queue.remove(site.name);
+		WorkerBuilder.dismiss(this, site);
 		save();
 		notifyNear(site, Fmt.ok("Finished " + site.name + " (" + site.placed + " blocks placed)."));
 		if (!config.autoStartQueue) {
@@ -521,7 +553,11 @@ public final class SiteManager {
 		boolean saveNow = false;
 		for (BuildSite site : new ArrayList<>(sites.values())) {
 			if (site.state == SiteState.BUILDING) {
-				Builder.tick(this, site);
+				if (site.mode == BuildMode.WORKERS) {
+					WorkerBuilder.tick(this, site);
+				} else {
+					Builder.tick(this, site);
+				}
 				if (site.placedSinceSave >= 200 && config.saveEvery200Blocks) {
 					saveNow = true;
 				}
@@ -564,6 +600,9 @@ public final class SiteManager {
 				}
 				site.missing.clear();
 				site.lastError = "";
+				if (site.mode == BuildMode.WORKERS) {
+					WorkerBuilder.onStart(site);
+				}
 				dirty = true;
 				notifyNear(site, Fmt.ok("Free mode, building " + site.name + "."));
 			}
@@ -579,9 +618,15 @@ public final class SiteManager {
 				site.state = SiteState.BUILDING;
 				site.startedTick = level.getGameTime();
 				site.plan = plan;
+				if (site.mode == BuildMode.WORKERS) {
+					WorkerBuilder.onStart(site);
+				}
 				notifyNear(site, Fmt.ok("Materials ready, building " + site.name + "."));
 			} else if (site.state == SiteState.BLOCKED) {
 				site.state = SiteState.BUILDING;
+				if (site.mode == BuildMode.WORKERS) {
+					WorkerBuilder.onStart(site);
+				}
 				notifyNear(site, Fmt.ok("Materials resupplied, resuming " + site.name + "."));
 			}
 			dirty = true;
@@ -606,6 +651,9 @@ public final class SiteManager {
 				.append(Fmt.num(plan == null ? 0 : plan.solidCells)).append(" blocks");
 		if (site.free) {
 			sb.append(" · free");
+		}
+		if (site.mode == BuildMode.WORKERS) {
+			sb.append(" · ").append(site.workers).append(" workers");
 		}
 		if (site.measuredRate > 0.05 && site.state == SiteState.BUILDING) {
 			sb.append(String.format(Locale.ROOT, " · %.1f b/s", site.measuredRate));
