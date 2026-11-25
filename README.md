@@ -2,7 +2,7 @@
 
 Buldo builds schematic files one block at a time, paid for with the exact items
 in containers **you** link to a build site. No substitutions, no magic. It is a
-Fabric mod for Minecraft **26.2** (Java 25), MIT licensed.
+Fabric mod for Minecraft **26.3** (Java 25), MIT licensed.
 
 It runs on the server, so vanilla clients can join; an optional client-side
 camera gives you an RTS-style overview of the build.
@@ -13,7 +13,7 @@ feature, and it is optional.
 
 ## Install
 
-1. Fabric Loader `>= 0.19.3` for Minecraft 26.2, with Fabric API.
+1. Fabric Loader `>= 0.19.3` for Minecraft 26.3, with Fabric API.
 2. Drop `buldo-0.1.0.jar` into `.minecraft/mods` (on the server too).
 3. Put schematic files in `.minecraft/schematics` (Litematica's folder) or
    `.minecraft/config/buldo/schematics`.
@@ -55,11 +55,33 @@ While it runs: `/buldo pause myhouse`, `/buldo resume myhouse`,
 | `/buldo pause` / `resume` / `cancel` | control a running site |
 | `/buldo free <name> on\|off` | build without taking items (creative only) |
 | `/buldo undo <name>` | restore the previous blocks of the last session |
-| `/buldo ghost <name> on\|off` | particle preview |
+| `/buldo preview <name> on\|off` | particle preview (alias `ghost`) |
 | `/buldo move <name>` | move an idle site to where you stand |
+| `/buldo shift <name> <dx> <dy> <dz>` | nudge an idle site relative to its current spot |
 | `/buldo tp <name>` | teleport to a site |
 | `/buldo queue add\|remove\|list\|clear [name]` | build sites one after another |
 | `/buldo speed <1-40>` | blocks per second (default 10) |
+
+### Preview and placement
+
+Create a site and Buldo immediately draws it as a particle hologram: exposed
+blocks in their block colours plus a gold wireframe around the exact bounding
+box. Nothing is placed and nothing is taken from containers, so this is a safe
+way to check the position first.
+
+```
+/buldo create house house-70.schem
+# look at it, then move it:
+/buldo move house               # anchor it at your feet
+/buldo shift house 0 0 -4       # nudge it four blocks north
+/buldo preview house off        # hide the hologram
+/buldo preview house on         # show it again
+/buldo start house
+```
+
+The preview also works while a site is paused. `/buldo info <name>` prints the
+area bounds, and both `move` and `shift` reset the cached plan so the hologram
+updates on the next tick.
 
 ### How it behaves
 

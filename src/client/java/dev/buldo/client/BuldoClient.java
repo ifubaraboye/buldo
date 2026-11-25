@@ -8,7 +8,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
-import org.lwjgl.glfw.GLFW;
 
 public final class BuldoClient implements ClientModInitializer {
 	private static final KeyMapping.Category CATEGORY =
@@ -19,7 +18,7 @@ public final class BuldoClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		overviewKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-				"key.buldo.overview", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F6, CATEGORY));
+				"key.buldo.overview", InputConstants.Type.KEYBOARD, InputConstants.KEY_F6, CATEGORY));
 
 		ClientTickEvents.END_CLIENT_TICK.register(BuldoClient::tick);
 		HudElementRegistry.addLast(OverviewHud.ID, new OverviewHud());

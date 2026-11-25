@@ -276,7 +276,7 @@ public final class OverviewCamera {
 				continue;
 			}
 			BlockState state = level.getBlockState(pos);
-			if (state.blocksMotion()) {
+			if (state.isSolid()) {
 				distance = Math.max(0.75, travelled - 0.9);
 				break;
 			}

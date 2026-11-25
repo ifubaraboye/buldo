@@ -1,6 +1,7 @@
 package dev.buldo.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -112,6 +113,14 @@ public final class BuldoCommand {
 						.then(Commands.argument("name", StringArgumentType.word())
 								.suggests(SITE_NAMES)
 								.executes(BuldoCommand::move)))
+				.then(Commands.literal("shift")
+						.requires(BuldoCommand::op)
+						.then(Commands.argument("name", StringArgumentType.word())
+								.suggests(SITE_NAMES)
+								.then(Commands.argument("dx", IntegerArgumentType.integer(-512, 512))
+										.then(Commands.argument("dy", IntegerArgumentType.integer(-512, 512))
+												.then(Commands.argument("dz", IntegerArgumentType.integer(-512, 512))
+														.executes(BuldoCommand::shift))))))
 				.then(Commands.literal("tp")
 						.then(Commands.argument("name", StringArgumentType.word())
 								.suggests(SITE_NAMES)
@@ -152,11 +161,8 @@ public final class BuldoCommand {
 						.then(Commands.argument("name", StringArgumentType.word())
 								.suggests(SITE_NAMES)
 								.executes(BuldoCommand::materials)))
-				.then(Commands.literal("ghost")
-						.then(Commands.argument("name", StringArgumentType.word())
-								.suggests(SITE_NAMES)
-								.then(Commands.argument("mode", StringArgumentType.word())
-										.executes(BuldoCommand::ghost))))
+				.then(previewNode("preview"))
+				.then(previewNode("ghost"))
 				.then(Commands.literal("link")
 						.requires(BuldoCommand::op)
 						.then(Commands.argument("name", StringArgumentType.word())
@@ -214,6 +220,14 @@ public final class BuldoCommand {
 		return manager;
 	}
 
+	private static LiteralArgumentBuilder<CommandSourceStack> previewNode(String literal) {
+		return Commands.literal(literal)
+				.then(Commands.argument("name", StringArgumentType.word())
+						.suggests(SITE_NAMES)
+						.then(Commands.argument("mode", StringArgumentType.word())
+								.executes(BuldoCommand::preview)));
+	}
+
 	private static BuildSite site(CommandContext<CommandSourceStack> ctx, String argument) {
 		SiteManager manager = manager(ctx);
 		if (manager == null) {
@@ -242,10 +256,11 @@ public final class BuldoCommand {
 				"/buldo start <name> [force] — start building",
 				"/buldo free <name> on|off — build without items (creative only)",
 				"/buldo pause|resume|cancel|undo <name>",
-				"/buldo ghost <name> on|off — particle preview",
+				"/buldo preview <name> on|off — particle preview before building",
+				"/buldo move <name> · /buldo shift <name> <dx> <dy> <dz> — reposition a site",
 				"/buldo queue add|remove|list|clear [name]",
 				"/buldo speed <1-40> — blocks per second",
-				"/buldo info <name> · /buldo sites · /buldo tp <name> · /buldo move <name>",
+				"/buldo info <name> · /buldo sites · /buldo tp <name>",
 		};
 		for (String line : lines) {
 			Fmt.send(src, line);
@@ -474,7 +489,37 @@ public final class BuldoCommand {
 			Fmt.send(ctx.getSource(), Fmt.err("Cannot move a site while it is active or done."));
 			return 0;
 		}
-		site.origin = BlockPos.containing(ctx.getSource().getPosition());
+		reposition(manager, site, BlockPos.containing(ctx.getSource().getPosition()));
+		Fmt.send(ctx.getSource(), Fmt.ok("Moved '" + site.name + "' to "
+				+ site.origin.getX() + "," + site.origin.getY() + "," + site.origin.getZ() + "."));
+		describeArea(ctx, manager, site);
+		return 1;
+	}
+
+	private static int shift(CommandContext<CommandSourceStack> ctx) {
+		BuildSite site = site(ctx, "name");
+		SiteManager manager = manager(ctx);
+		if (site == null || manager == null) {
+			return 0;
+		}
+		if (site.state.active() || site.state == SiteState.DONE) {
+			Fmt.send(ctx.getSource(), Fmt.err("Cannot move a site while it is active or done."));
+			return 0;
+		}
+		int dx = IntegerArgumentType.getInteger(ctx, "dx");
+		int dy = IntegerArgumentType.getInteger(ctx, "dy");
+		int dz = IntegerArgumentType.getInteger(ctx, "dz");
+		reposition(manager, site, site.origin.offset(dx, dy, dz));
+		Fmt.send(ctx.getSource(), Fmt.ok("Shifted '" + site.name + "' by "
+				+ dx + " " + dy + " " + dz + "; origin is now "
+				+ site.origin.getX() + "," + site.origin.getY() + "," + site.origin.getZ() + "."));
+		describeArea(ctx, manager, site);
+		return 1;
+	}
+
+	/** Moves the anchor of an idle site and clears the cached plan so it is rebuilt. */
+	private static void reposition(SiteManager manager, BuildSite site, BlockPos origin) {
+		site.origin = origin;
 		site.plan = null;
 		site.cursor = 0;
 		site.placed = 0;
@@ -482,9 +527,20 @@ public final class BuldoCommand {
 		site.state = SiteState.READY;
 		manager.markDirty();
 		manager.save();
-		Fmt.send(ctx.getSource(), Fmt.ok("Moved '" + site.name + "' to "
-				+ site.origin.getX() + "," + site.origin.getY() + "," + site.origin.getZ() + "."));
-		return 1;
+	}
+
+	private static void describeArea(CommandContext<CommandSourceStack> ctx, SiteManager manager, BuildSite site) {
+		BuildPlan plan = manager.plan(site);
+		if (plan == null) {
+			return;
+		}
+		Fmt.send(ctx.getSource(), "area " + plan.min.getX() + "," + plan.min.getY() + "," + plan.min.getZ()
+				+ " to " + plan.max.getX() + "," + plan.max.getY() + "," + plan.max.getZ()
+				+ " (" + (plan.max.getX() - plan.min.getX() + 1) + "x"
+				+ (plan.max.getY() - plan.min.getY() + 1) + "x"
+				+ (plan.max.getZ() - plan.min.getZ() + 1) + ")");
+		Fmt.send(ctx.getSource(), "Preview with /buldo preview " + site.name + " on · nudge with /buldo shift "
+				+ site.name + " <dx> <dy> <dz>");
 	}
 
 	private static int teleport(CommandContext<CommandSourceStack> ctx) {
@@ -772,7 +828,7 @@ public final class BuldoCommand {
 		return 1;
 	}
 
-	private static int ghost(CommandContext<CommandSourceStack> ctx) {
+	private static int preview(CommandContext<CommandSourceStack> ctx) {
 		BuildSite site = site(ctx, "name");
 		SiteManager manager = manager(ctx);
 		if (site == null || manager == null) {
@@ -782,7 +838,10 @@ public final class BuldoCommand {
 		site.ghost = mode.equalsIgnoreCase("on") || mode.equalsIgnoreCase("true")
 				|| mode.equalsIgnoreCase("yes") || mode.equalsIgnoreCase("1");
 		manager.markDirty();
-		Fmt.send(ctx.getSource(), Fmt.ok("Ghost preview for '" + site.name + "' is " + (site.ghost ? "on" : "off") + "."));
+		Fmt.send(ctx.getSource(), Fmt.ok("Preview for '" + site.name + "' is " + (site.ghost ? "on" : "off") + "."));
+		if (site.ghost) {
+			describeArea(ctx, manager, site);
+		}
 		return 1;
 	}
 
