@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "buldo",
+	"version": "${version}",
+	"name": "Buldo",
+	"description": "Places schematics block by block, paid for with exact items from containers you link.",
+	"authors": [
+		"oribi"
+	],
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"dev.buldo.Buldo"
+		],
+		"client": [
+			"dev.buldo.client.BuldoClient"
+		]
+	},
+	"mixins": [
+		{
+			"config": "buldo.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": ">=0.156.0"
+	}
+}
