@@ -40,6 +40,8 @@ public final class BuildSite {
 	public double carry;
 	public long startedTick;
 	public boolean ghost = true;
+	/** Draw the preview as real block models with BlockDisplay entities (opt-in). */
+	public boolean displayPreview = false;
 	public String sourceHash = "";
 	public String lastError = "";
 	public final List<BlockPos> containers = new ArrayList<>();
@@ -110,6 +112,7 @@ public final class BuildSite {
 		tag.putDouble("carry", carry);
 		tag.putLong("startedTick", startedTick);
 		tag.putBoolean("ghost", ghost);
+		tag.putBoolean("displayPreview", displayPreview);
 		tag.putString("sourceHash", sourceHash == null ? "" : sourceHash);
 		tag.putString("lastError", lastError == null ? "" : lastError);
 
@@ -182,6 +185,7 @@ public final class BuildSite {
 		site.carry = tag.getDoubleOr("carry", 0.0);
 		site.startedTick = tag.getLongOr("startedTick", 0L);
 		site.ghost = tag.getBooleanOr("ghost", true);
+		site.displayPreview = tag.getBooleanOr("displayPreview", false);
 		site.sourceHash = tag.getStringOr("sourceHash", "");
 		site.lastError = tag.getStringOr("lastError", "");
 

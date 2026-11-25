@@ -12,6 +12,7 @@ import dev.buldo.schem.Blueprint;
 import dev.buldo.schem.SchematicLibrary;
 import dev.buldo.site.BuildSite;
 import dev.buldo.site.Containers;
+import dev.buldo.site.PreviewDisplays;
 import dev.buldo.site.SiteManager;
 import dev.buldo.site.SiteState;
 import dev.buldo.util.Fmt;
@@ -112,7 +113,9 @@ public final class BuldoCommand {
 						.requires(BuldoCommand::op)
 						.then(Commands.argument("name", StringArgumentType.word())
 								.suggests(SITE_NAMES)
-								.executes(BuldoCommand::move)))
+								.executes(BuldoCommand::move)
+								.then(Commands.argument("pos", BlockPosArgument.blockPos())
+										.executes(BuldoCommand::moveTo))))
 				.then(Commands.literal("shift")
 						.requires(BuldoCommand::op)
 						.then(Commands.argument("name", StringArgumentType.word())
@@ -256,7 +259,7 @@ public final class BuldoCommand {
 				"/buldo start <name> [force] — start building",
 				"/buldo free <name> on|off — build without items (creative only)",
 				"/buldo pause|resume|cancel|undo <name>",
-				"/buldo preview <name> on|off — particle preview before building",
+				"/buldo preview <name> on|off|blocks — particle or block-model preview",
 				"/buldo move <name> · /buldo shift <name> <dx> <dy> <dz> — reposition a site",
 				"/buldo queue add|remove|list|clear [name]",
 				"/buldo speed <1-40> — blocks per second",
@@ -456,7 +459,7 @@ public final class BuldoCommand {
 					+ (plan.unobtainable.isEmpty() ? "" : " · no item " + plan.unobtainable.size()));
 		}
 		Fmt.send(ctx.getSource(), "containers " + site.containers.size() + " · undo frames " + site.undo.size()
-				+ " · ghost " + (site.ghost ? "on" : "off")
+				+ " · preview " + (site.ghost ? (site.displayPreview ? "blocks" : "dust") : "off")
 				+ (site.free ? " · FREE MODE" : "")
 				+ (site.lastError.isEmpty() ? "" : " · " + site.lastError));
 		if (!site.missing.isEmpty()) {
@@ -492,6 +495,24 @@ public final class BuldoCommand {
 		reposition(manager, site, BlockPos.containing(ctx.getSource().getPosition()));
 		Fmt.send(ctx.getSource(), Fmt.ok("Moved '" + site.name + "' to "
 				+ site.origin.getX() + "," + site.origin.getY() + "," + site.origin.getZ() + "."));
+		describeArea(ctx, manager, site);
+		return 1;
+	}
+
+	private static int moveTo(CommandContext<CommandSourceStack> ctx) {
+		BuildSite site = site(ctx, "name");
+		SiteManager manager = manager(ctx);
+		if (site == null || manager == null) {
+			return 0;
+		}
+		if (site.state.active() || site.state == SiteState.DONE) {
+			Fmt.send(ctx.getSource(), Fmt.err("Cannot move a site while it is active or done."));
+			return 0;
+		}
+		BlockPos pos = BlockPosArgument.getBlockPos(ctx, "pos");
+		reposition(manager, site, pos);
+		Fmt.send(ctx.getSource(), Fmt.ok("Moved '" + site.name + "' to "
+				+ pos.getX() + "," + pos.getY() + "," + pos.getZ() + "."));
 		describeArea(ctx, manager, site);
 		return 1;
 	}
@@ -539,8 +560,8 @@ public final class BuldoCommand {
 				+ " (" + (plan.max.getX() - plan.min.getX() + 1) + "x"
 				+ (plan.max.getY() - plan.min.getY() + 1) + "x"
 				+ (plan.max.getZ() - plan.min.getZ() + 1) + ")");
-		Fmt.send(ctx.getSource(), "Preview with /buldo preview " + site.name + " on · nudge with /buldo shift "
-				+ site.name + " <dx> <dy> <dz>");
+		Fmt.send(ctx.getSource(), "Preview with /buldo preview " + site.name + " blocks (or on for particles) · nudge with "
+				+ "/buldo shift " + site.name + " <dx> <dy> <dz>");
 	}
 
 	private static int teleport(CommandContext<CommandSourceStack> ctx) {
@@ -834,11 +855,48 @@ public final class BuldoCommand {
 		if (site == null || manager == null) {
 			return 0;
 		}
-		String mode = StringArgumentType.getString(ctx, "mode");
-		site.ghost = mode.equalsIgnoreCase("on") || mode.equalsIgnoreCase("true")
-				|| mode.equalsIgnoreCase("yes") || mode.equalsIgnoreCase("1");
+		String mode = StringArgumentType.getString(ctx, "mode").toLowerCase(Locale.ROOT);
+		switch (mode) {
+			case "on", "true", "yes", "1", "dust", "particles" -> {
+				site.ghost = true;
+				site.displayPreview = false;
+			}
+			case "blocks", "block", "display", "displays", "models" -> {
+				site.ghost = true;
+				site.displayPreview = true;
+			}
+			case "off", "false", "no", "0", "none" -> {
+				site.ghost = false;
+				site.displayPreview = false;
+			}
+			default -> {
+				Fmt.send(ctx.getSource(), Fmt.err("Usage: /buldo preview " + site.name + " on|off|blocks"));
+				return 0;
+			}
+		}
+		if (!site.displayPreview) {
+			PreviewDisplays.hide(site.name);
+		}
 		manager.markDirty();
-		Fmt.send(ctx.getSource(), Fmt.ok("Preview for '" + site.name + "' is " + (site.ghost ? "on" : "off") + "."));
+		manager.save();
+		if (!site.ghost) {
+			Fmt.send(ctx.getSource(), Fmt.ok("Preview for '" + site.name + "' is off."));
+			return 1;
+		}
+		if (site.displayPreview) {
+			BuildPlan plan = manager.plan(site);
+			int count = plan == null ? 0 : PreviewDisplays.previewCount(plan, site.cursor);
+			if (count > PreviewDisplays.MAX_PER_SITE) {
+				site.displayPreview = false;
+				manager.markDirty();
+				manager.save();
+				Fmt.send(ctx.getSource(), Fmt.warn(count + " exposed blocks is too many for the block preview (max "
+						+ PreviewDisplays.MAX_PER_SITE + "); using the particle preview instead."));
+			} else {
+				Fmt.send(ctx.getSource(), Fmt.ok("Block preview for '" + site.name + "' is on ("
+						+ count + " blocks). It hides when the build starts."));
+			}
+		}
 		if (site.ghost) {
 			describeArea(ctx, manager, site);
 		}

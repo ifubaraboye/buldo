@@ -46,7 +46,9 @@ final class Ghost {
 		}
 
 		drawOutline(level, plan);
-		if (plan.exposedIndices.length == 0) {
+		// In block display mode the outline is the only particle layer; the block
+		// models themselves come from PreviewDisplays.
+		if (site.displayPreview || plan.exposedIndices.length == 0) {
 			return;
 		}
 

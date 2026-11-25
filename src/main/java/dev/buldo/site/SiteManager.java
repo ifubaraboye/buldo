@@ -62,11 +62,13 @@ public final class SiteManager {
 	public static void onServerStarted(MinecraftServer server) {
 		current = new SiteManager(server);
 		current.load();
+		PreviewDisplays.discardOrphans(server);
 		Buldo.LOGGER.info("Buldo loaded {} site(s) from {}", current.sites.size(), current.sitesDir());
 	}
 
 	public static void onServerStopping(MinecraftServer server) {
 		if (current != null) {
+			PreviewDisplays.hideAll();
 			current.save();
 			current = null;
 		}
@@ -98,6 +100,10 @@ public final class SiteManager {
 
 	public Collection<BuildSite> sites() {
 		return sites.values();
+	}
+
+	Iterable<ServerLevel> levels() {
+		return server.getAllLevels();
 	}
 
 	public BuildSite get(String name) {
@@ -261,6 +267,7 @@ public final class SiteManager {
 		if (site.state == SiteState.BUILDING) {
 			return false;
 		}
+		PreviewDisplays.hide(site.name);
 		sites.remove(site.name);
 		queue.remove(site.name);
 		try {
@@ -357,6 +364,7 @@ public final class SiteManager {
 		if (site.state == SiteState.BUILDING) {
 			return true;
 		}
+		PreviewDisplays.hide(site.name);
 		ServerLevel level = level(site);
 		if (level == null) {
 			return false;
@@ -493,6 +501,7 @@ public final class SiteManager {
 
 	public void onSiteFinished(BuildSite site) {
 		queue.remove(site.name);
+		PreviewDisplays.hide(site.name);
 		save();
 		notifyNear(site, Fmt.ok("Finished " + site.name + " (" + site.placed + " blocks placed)."));
 		if (!config.autoStartQueue) {
@@ -531,6 +540,10 @@ public final class SiteManager {
 			}
 			if (tickCounter % 10 == 0) {
 				Ghost.tick(this, site);
+				PreviewDisplays.tick(this, site);
+			}
+			if (tickCounter % 200 == 0) {
+				PreviewDisplays.cleanupOrphans(this);
 			}
 			if (tickCounter % 20 == 0) {
 				Builder.sampleRate(site);

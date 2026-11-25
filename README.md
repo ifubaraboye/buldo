@@ -55,7 +55,7 @@ While it runs: `/buldo pause myhouse`, `/buldo resume myhouse`,
 | `/buldo pause` / `resume` / `cancel` | control a running site |
 | `/buldo free <name> on\|off` | build without taking items (creative only) |
 | `/buldo undo <name>` | restore the previous blocks of the last session |
-| `/buldo preview <name> on\|off` | particle preview (alias `ghost`) |
+| `/buldo preview <name> on\|off\|blocks` | particle preview or real block-model preview (alias `ghost`) |
 | `/buldo move <name>` | move an idle site to where you stand |
 | `/buldo shift <name> <dx> <dy> <dz>` | nudge an idle site relative to its current spot |
 | `/buldo tp <name>` | teleport to a site |
@@ -73,15 +73,23 @@ way to check the position first.
 /buldo create house house-70.schem
 # look at it, then move it:
 /buldo move house               # anchor it at your feet
+/buldo move house 120 64 -40    # or an explicit block position
 /buldo shift house 0 0 -4       # nudge it four blocks north
+/buldo preview house blocks     # real block models instead of dust
 /buldo preview house off        # hide the hologram
-/buldo preview house on         # show it again
 /buldo start house
 ```
 
 The preview also works while a site is paused. `/buldo info <name>` prints the
-area bounds, and both `move` and `shift` reset the cached plan so the hologram
-updates on the next tick.
+area bounds, and `move`/`shift` reset the cached plan so the hologram updates on
+the next tick.
+
+Inspired by Litematica's ghost rendering, `preview <name> blocks` shows the
+exposed blocks as real block models using vanilla `block_display` entities, so
+the shape reads much better than particles and still works on unmodded clients.
+Those entities have no collision, are never part of the build, are removed when
+the site starts, and are capped at 1500 blocks (larger plans fall back to the
+particle preview). They only spawn while the site's chunks are loaded.
 
 ### How it behaves
 
